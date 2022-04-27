@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <script type="text/javascript" src="d3/d3.js"></script>
+  <script src="https://unpkg.com/topojson@3"></script>
+  <script src="https://unpkg.com/d3-simple-slider"></script>
+</head>
+
+<style>
+  path{
+    stroke:white;
+    stroke-width:0.1px;
+  }
+
+  .country:hover{
+    stroke:red;
+    stroke-width:0.5px;
+  }
+
+  .button:hover{
+    background-color:black;
+    color:white;
+  }
+</style>
+
+<body>
+  <div id="main" style="position:absolute;width:950px;height:600px">
+    <div id="map" style="position:absolute;width:950px;height:500px"></div>
+  </div>
+
+  <div style="position:absolute;top:500px;left:50px">
+    <div>
+      <p id="time-value"></p>
+      <div id="time-slider" style="position:absolute;top:0px;left:40px"></div>
+    </div>
+  </div>
+
+  <div id="dropdown" style="position:absolute;top:520px;left:500px"></div>
+
+  <div id="clone" style="position:absolute;width:950px;height:600px;left:960px"></div>
+
+
+  <script type="text/javascript">
+    d3.select("#main")
+      .style("background-color","#efefef")
+      .style("border","1px solid black")
+      .style("border-radius","20px");
+
+    var width=950;
+    var height=500;
+
+    var projection=d3.geoNaturalEarth1();
+
+    d3.select("#map")
+      .append("svg")
+      .style("border-width","1px")
+      .style("border-style","none none solid none")
+      .attr("width",width)
+      .attr("height",height);
+
+    var path=d3.geoPath().projection(projection);
+
+    d3.select("svg")
+      .append("g")
+      .call(d3.zoom().on("zoom",function(d){
+        d3.select("g").attr("transform",d3.event.transform);
+      }));
+
+    //Load data
+    Promise.all([
+      d3.json("countries-50m.json"),
+      d3.csv("world bank/world bank.csv")
+    ]).then(([topodata,WorldBankdata])=>{
+      var countries=topojson.feature(topodata, topodata.objects.countries);
+
+      var GDP=[];
+      var tempdata=[];
+
+      //Dropdown list
+      var display="GDP (current US$)";
+
+      var dropdown=d3.select("#dropdown")
+        .insert("select")
+        .style("width","200px")
+        .on("change",function(d){
+          display=dropdown.property("value");
+          update();
+        });
+
+      var content=["GDP (current US$)","Population, total","GDP growth (annual %)","GDP per capita (current US$)","Population growth (annual %)","GNI, Atlas method (current US$)","GNI per capita, Atlas method (current US$)","Life expectancy at birth, total (years)","School enrollment, secondary (% gross)","Energy use (kg of oil equivalent per capita)","CO2 emissions (metric tons per capita)"];
+
+      d3.select("#dropdown")
+        .select("select")
+        .selectAll("option")
+        .data(content)
+        .enter()
+        .append("option")
+        .attr("value",function(d){return d;})
+        .text(function(d){return d;});
+
+      //Slider
+      var minYear=2000;
+      var maxYear=2015;
+
+      var slider=d3.sliderBottom()
+                   .min(minYear)
+                   .max(maxYear)
+                   .step(1)
+                   .width(360)
+                   .on("onchange",function(d){
+                     d3.select("#time-value").text(d);
+                     update();
+                   });
+
+      d3.select("#time-slider")
+        .append("svg")
+        .attr("width",width/2)
+        .attr("height",100)
+        .append("g")
+        .attr("transform","translate("+15+","+25+")")
+        .call(slider);
+
+      d3.select('#time-value').text(slider.value());
+
+      WorldBankdata.forEach(d=>{
+        if(d["Series Name"]=="GDP (current US$)"){
+          GDP[d["Country Name"]]=+d["2000 [YR2000]"];
+          tempdata.push({
+            value:+d["2000 [YR2000]"]
+          });
+        }
+      });
+
+      var max=d3.max(tempdata,function(d){
+        if(!isNaN(d.value)){
+          return d.value;
+        }
+      });
+      var min=d3.min(tempdata,function(d){
+        if(!isNaN(d.value)){
+          return d.value;
+        }
+      });
+
+      color = d3.scaleSequentialLog()
+        .domain([min,max])
+        .interpolator(d3.interpolateYlGnBu);
+
+      //Compare button
+      d3.select("body")
+        .append("button")
+        .text("Compare")
+        .attr("class","button")
+        .style("position","absolute")
+        .style("top","518px")
+        .style("left","720px")
+        .style("border-radius","10px")
+        .style("font-size","18px")
+        .style("border","2px solid black")
+        .style("padding","4px 12px")
+        .on("click",function(d){
+          var main=document.getElementById('main');
+          var clone=document.getElementById('clone');
+          clone.innerHTML=main.innerHTML;
+
+          d3.select("#clone")
+            .style("background-color","#efefef")
+            .style("border","1px solid black")
+            .style("border-radius","20px");
+
+          d3.select("#clone")
+            .append("p")
+            .text(display+", "+slider.value())
+            .style("position","absolute")
+            .style("top","500px")
+            .style("left","360px")
+            .style("font-size","24px")
+            .style("font-weight","bold");
+
+          d3.select("#clone")
+            .select("g")
+            .call(d3.zoom().on("zoom",function(d){
+              d3.select("#clone").select("g").attr("transform",d3.event.transform);
+            }));
+
+          d3.select("#clone")
+            .select("#legend")
+            .selectAll("text")
+            .on("mouseover",function(d){
+              d3.select(this).style("font-size",24).attr("y",48);
+            })
+            .on("mouseout",function(d){
+              d3.select(this).style("font-size",8).attr("y",35);
+            });
+        });
+
+        //Clear button
+        d3.select("body")
+          .append("button")
+          .text("Clear")
+          .attr("class","button")
+          .style("position","absolute")
+          .style("top","518px")
+          .style("left","840px")
+          .style("border-radius","10px")
+          .style("font-size","18px")
+          .style("border","2px solid black")
+          .style("padding","4px 12px")
+          .on("click",function(d){
+            var clone=document.getElementById('clone');
+            clone.innerHTML=null;
+
+            d3.select("#clone")
+              .style("background-color",null)
+              .style("border",null);
+          });
+
+      draw();
+
+      function draw(){
+        d3.select("#map")
+          .select("g")
+          .selectAll("path")
+          .data(countries.features)
+          .enter()
+          .append("path")
+          .attr("d",path)
+          .attr("class","country")
+          .attr("fill",function(d){
+            if(GDP[d.properties.name]==undefined || isNaN(GDP[d.properties.name])){
+              return "black";
+            }
+            else{
+              return color(GDP[d.properties.name]);
+            }
+          })
+          .append("title")
+          .text(function(d){
+            return d.properties.name+"\n"+d3.format(",")(GDP[d.properties.name]);
+          });
+
+          legend=[0,1,2,3,4,5];
+
+          d3.select("#map")
+            .append("svg")
+            .style("position","absolute")
+            .style("top","400px")
+            .style("left","0px")
+            .attr("width",250)
+            .attr("height",80)
+            .append("g")
+            .attr("id","legend")
+            .attr("transform","translate("+5+","+5+")")
+            .selectAll("rect")
+            .data(legend)
+            .enter()
+            .append("rect")
+            .attr("x",function(d,i){return 5+(i*20+20);})
+            .attr("y",15)
+            .attr("width",20)
+            .attr("height",10)
+            .attr("fill",function(d){return d!=0?d3.interpolateYlGnBu(d/5):"black";});
+
+          d3.select("#legend")
+            .selectAll("text")
+            .data(legend)
+            .enter()
+            .append("text")
+            .text(function(d){
+              if(d==1){
+                return d3.format(".2s")(min);
+              }
+              else if(d==5){
+                return d3.format(".2s")(max);
+              }
+              else if(d==0){
+                return "N/A"
+              }
+              else{
+                return;
+              }
+            })
+            .attr("x",function(d,i){return 25+(i*20+10);})
+            .attr("y",35)
+            .style("font-size",8)
+            .style("text-align","justified")
+            .style("text-anchor","middle")
+            .on("mouseover",function(d){
+              d3.select(this).style("font-size",24).attr("y",48);
+            })
+            .on("mouseout",function(d){
+              d3.select(this).style("font-size",8).attr("y",35);
+            });
+      }
+
+      function update(){
+        tempdata=[];
+        min=0;
+        max=0;
+
+        WorldBankdata.forEach(d=>{
+          if(d["Series Name"]==display){
+            GDP[d["Country Name"]]=+d[slider.value()+" [YR"+slider.value()+"]"];
+            tempdata.push({
+              value:+d[slider.value()+" [YR"+slider.value()+"]"]
+            });
+          }
+        });
+
+        max=d3.max(tempdata,function(d){
+          if(!isNaN(d.value)){
+            return d.value;
+          }
+        });
+        min=d3.min(tempdata,function(d){
+          if(!isNaN(d.value)){
+            return d.value;
+          }
+        });
+
+        if(display=="GDP growth (annual %)" || display=="Population growth (annual %)" || display=="Life expectancy at birth, total (years)" || display=="School enrollment, secondary (% gross)"){
+          color = d3.scaleSequential()
+           .domain([min,max])
+           .interpolator(d3.interpolateYlGnBu);
+        }
+        else{
+          color = d3.scaleSequentialLog()
+           .domain([min,max])
+           .interpolator(d3.interpolateYlGnBu);
+         }
+
+        d3.select("#map")
+          .select("g")
+          .selectAll("path")
+          .attr("fill",function(d){
+            if(GDP[d.properties.name]==undefined || isNaN(GDP[d.properties.name])){
+              return "black";
+            }
+            else{
+              return color(GDP[d.properties.name]);
+            }
+          })
+          .select("title")
+          .text(function(d){
+            return d.properties.name+"\n"+d3.format(",")(GDP[d.properties.name]);
+          });
+
+        d3.select("#legend")
+          .selectAll("text")
+          .text(function(d){
+            if(d==1){
+              return d3.format(".2s")(min);
+            }
+            else if(d==5){
+              return d3.format(".2s")(max);
+            }
+            else if(d==0){
+              return "N/A"
+            }
+            else{
+              return;
+            }
+          });
+      }
+
+    });
+  </script>
+</body>
+
+</html>
