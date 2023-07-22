@@ -1,3 +1,3 @@
 # world-data
 
-Run on it on local server
+Run it on a local server
